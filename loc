@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+from termcolor import colored
+
+def calc_loc(path):
+    r=0
+    try:
+        with open(path, "r") as f:
+            r = len(f.readlines())
+        return r
+    except:
+        return "*"
+
+def loc_color(loc, maxloc):
+    if loc == "*":
+        return "red"
+
+    if loc <= maxloc/2:
+        return "green"
+    elif loc <= maxloc:
+        return "white"
+    elif loc <= maxloc*3/2:
+        return "yellow"
+    else:
+        return "red"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("dir", help="directory to walk")
+parser.add_argument("--ignore", "-I", help="directories to ignore",
+                    default=[], action="append")
+parser.add_argument("--max-loc", "-M", help="max loc", type=int, default=100)
+args = parser.parse_args()
+
+data = []
+
+for (root, dirs, files) in os.walk(args.dir):
+    root_data = []
+
+    for file in files:
+        path = os.path.join(root, file)
+        if not any(path.startswith(arg) for arg in args.ignore):
+            root_data.append((file, calc_loc(os.path.join(root, file))))
+
+    if len(root_data) > 0:
+        data.append((root, root_data))
+
+#  print(data)
+
+
+for (root, root_data) in data:
+    name_width = max(len(fname) for (fname, loc) in root_data)
+    loc_width = max(len(str(loc)) for (fname, loc) in root_data)
+
+    print(colored(root, "magenta"))
+
+    for i in range(len(root_data)):
+        fname, loc = root_data[i]
+
+        tree_str = colored("└─" if i+1==len(root_data) else "├─", "magenta")
+
+        loc_str = colored(f"{str(loc).rjust(loc_width)} loc", loc_color(loc, args.max_loc))
+
+        print(f"{tree_str}{fname.ljust(name_width)} {loc_str}")
+    print()

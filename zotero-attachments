@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+#  Outputs all the attachments in style [{key}] {title} ({author1}, {author2}, ...)
+
+import sqlite3
+import sys
+import re
+from os import path
+from glob import glob
+
+db_path = "/home/maxim/Zotero/zotero.sqlite"
+storage_path = "/home/maxim/Zotero/storage"
+
+if sys.argv[1] == "list":
+    con = sqlite3.connect(db_path)
+    cur = con.cursor()
+    cur.row_factory = sqlite3.Row
+
+    #  A list of attachments with (parent,key,title,date)
+    res = cur.execute("""
+    SELECT 
+    itemAttachments.parentItemID AS parent, 
+    items.key AS key,
+    idv_title.value AS title,
+    idv_date.value AS date
+    FROM 
+    itemAttachments 
+    LEFT JOIN deletedItems ON deletedItems.itemID=itemAttachments.itemID 
+    JOIN items ON items.itemID=itemAttachments.itemID
+    JOIN itemData AS id_title ON id_title.itemID=itemAttachments.parentItemID AND id_title.fieldID=1
+    JOIN itemDataValues AS idv_title ON idv_title.valueID=id_title.valueID
+    JOIN itemData AS id_date ON id_date.itemID=itemAttachments.parentItemID AND id_date.fieldID=6
+    JOIN itemDataValues AS idv_date ON idv_date.valueID=id_date.valueID
+    WHERE deletedItems.dateDeleted IS NULL;
+    """)
+    attachments_rows = res.fetchall()
+    
+    #  A list of authors with items
+    res = cur.execute("""
+    SELECT 
+    itemCreators.itemID AS item,
+    creators.firstName AS firstName,
+    creators.lastName AS lastName
+    FROM 
+    itemCreators 
+    JOIN creators ON creators.creatorID=itemCreators.creatorID
+    ORDER BY itemCreators.itemID, itemCreators.orderIndex;
+    """)
+    creators_rows = res.fetchall();
+    
+    # Constructing the output map 
+    attachments = {} # itemID -> {title, authors, key, date}
+    for att in attachments_rows:
+        attachments[att["parent"]] = {
+                "title": att["title"],
+                "key": att["key"],
+                "date": att["date"].split(" ")[1],
+                "authors": []
+                }
+    
+    for creator in creators_rows:
+        name = creator["firstName"] + " " + creator["lastName"]
+        item = creator["item"]
+    
+        if item in attachments:
+            attachments[item]["authors"].append(name)
+    
+    for item in attachments:
+        title = attachments[item]["title"]
+        key = attachments[item]["key"]
+        authors_string = ", ".join(attachments[item]["authors"])
+        year = attachments[item]["date"]
+        print(f"[{key}] {title}, {year} ({authors_string})")
+
+if sys.argv[1] == "storage": 
+    line = sys.stdin.readline()[:-1]
+    r = re.search("\[(.*?)\]", line+"[a]")
+    storage_id = r.group(1)
+    pdf_glob = path.join(storage_path, storage_id, "*.pdf")
+    print(glob(pdf_glob)[0])
